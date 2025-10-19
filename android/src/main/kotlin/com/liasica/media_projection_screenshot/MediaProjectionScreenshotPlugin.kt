@@ -46,6 +46,9 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
   private var processingTime = AtomicLong(System.currentTimeMillis())
   private var counting = AtomicLong(0)
 
+  private var mWidth = 0
+  private var mHeight = 0
+
   companion object {
     const val LOG_TAG = "MP_SCREENSHOT"
     const val CAPTURE_SINGLE = "MP_CAPTURE_SINGLE"
@@ -102,6 +105,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       RequestMediaProjectionPermissionManager.ERROR_CODE_SUCCEED -> {
         Log.i(LOG_TAG, "Create media projection succeeded!")
         mediaProjection = projection
+        initVirtualDisplay(mediaProjection!!);
       }
 
       RequestMediaProjectionPermissionManager.ERROR_CODE_FAILED_USER_CANCELED -> {
@@ -112,6 +116,32 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
         Log.e(LOG_TAG, "Create media projection failed because system api level is lower than 21")
       }
     }
+  }
+
+  @RequiresApi(Build.VERSION_CODES.O)
+  private fun initVirtualDisplay(mediaProjection: MediaProjection) {
+    mediaProjection.registerCallback(mediaProjectionCallback, null)
+    val metrics = Resources.getSystem().displayMetrics
+    mWidth = metrics.widthPixels
+    mHeight = metrics.heightPixels
+
+    val mDensity = Resources.getSystem().displayMetrics.densityDpi
+
+    if (mImageReader == null) {
+      mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2)
+    }
+
+    mVirtualDisplay = mediaProjection.createVirtualDisplay(
+      CAPTURE_CONTINUOUS,
+      mWidth,
+      mHeight,
+      mDensity,
+      DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
+      mImageReader!!.surface,
+      null,
+      null,
+    )
+
   }
 
   private fun stopCapture(result: Result) {
@@ -130,6 +160,14 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
     Log.i(LOG_TAG, "Screen capture stopped")
     result.success(true)
+  }
+
+  val mediaProjectionCallback = object : MediaProjection.Callback() {
+    override fun onStop() {
+      // Handle the stopping of the projection, e.g., release resources
+      // virtualDisplay.release()
+      // mediaProjection.unregisterCallback(this)
+    }
   }
 
   @SuppressLint("WrongConstant")
@@ -153,21 +191,6 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     val metrics = Resources.getSystem().displayMetrics
     val width = metrics.widthPixels
     val height = metrics.heightPixels
-
-    if (mImageReader == null) {
-      mImageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 5)
-    }
-
-    mVirtualDisplay = mediaProjection?.createVirtualDisplay(
-      CAPTURE_CONTINUOUS,
-      width,
-      height,
-      1,
-      DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
-      mImageReader!!.surface,
-      null,
-      null,
-    )
 
     val region = call.arguments as Map<*, *>?
     val fps = region?.let {
@@ -253,48 +276,24 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       return
     }
 
-    val metrics = Resources.getSystem().displayMetrics
-    val width = metrics.widthPixels
-    val height = metrics.heightPixels
-
-    val imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 5)
-
-    mediaProjection?.createVirtualDisplay(
-      CAPTURE_SINGLE,
-      width,
-      height,
-      1,
-      DisplayManager.VIRTUAL_DISPLAY_FLAG_PUBLIC,
-      imageReader.surface,
-      null,
-      null,
-    )
 
     Handler(Looper.getMainLooper()).postDelayed({
-      val image = imageReader.acquireLatestImage() ?: return@postDelayed
+      val image = mImageReader!!.acquireLatestImage() ?: return@postDelayed
 
       val planes = image.planes
       val buffer = planes[0].buffer
       val pixelStride = planes[0].pixelStride
       val rowStride = planes[0].rowStride
-      val rowPadding = rowStride - pixelStride * width
-      val padding = rowPadding / pixelStride
+      val rowPadding = rowStride - pixelStride * mWidth
 
-      var bitmap = Bitmap.createBitmap(width + padding, height, Bitmap.Config.ARGB_8888)
+      val bitmap = Bitmap.createBitmap(
+        mWidth + rowPadding / pixelStride,
+        mHeight,
+        Bitmap.Config.ARGB_8888
+      )
       bitmap.copyPixelsFromBuffer(buffer)
 
       image.close()
-      mVirtualDisplay?.release()
-
-      val region = call.arguments as Map<*, *>?
-      region?.let {
-        val x = it["x"] as Int + padding / 2
-        val y = it["y"] as Int
-        val w = it["width"] as Int
-        val h = it["height"] as Int
-
-        bitmap = bitmap.crop(x, y, w, h)
-      }
 
       val outputStream = ByteArrayOutputStream()
       bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
