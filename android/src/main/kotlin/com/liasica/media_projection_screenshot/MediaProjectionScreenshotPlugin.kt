@@ -306,7 +306,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       image.close()
 
       val outputStream = ByteArrayOutputStream()
-      bitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+      bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
 
       val byteArray = outputStream.toByteArray()
       // val b64 = "data:image/png;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
