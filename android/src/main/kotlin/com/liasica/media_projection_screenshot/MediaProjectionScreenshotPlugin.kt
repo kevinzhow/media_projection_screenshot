@@ -49,6 +49,8 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
   private var mWidth = 0
   private var mHeight = 0
 
+  private var mImageReady = false
+
   companion object {
     const val LOG_TAG = "MP_SCREENSHOT"
     const val CAPTURE_SINGLE = "MP_CAPTURE_SINGLE"
@@ -129,6 +131,14 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
     if (mImageReader == null) {
       mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2)
+      mImageReader?.setOnImageAvailableListener({ reader ->
+        if (!mImageReady) {
+          mImageReady = true
+          // Avoid black screen for the first capture
+          val image = mImageReader!!.acquireLatestImage()
+          image.close()
+        }
+      }, null)
     }
 
     mVirtualDisplay = mediaProjection.createVirtualDisplay(
@@ -141,6 +151,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       null,
       null,
     )
+
 
   }
 
@@ -276,9 +287,8 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       return
     }
 
-
-    Handler(Looper.getMainLooper()).postDelayed({
-      val image = mImageReader!!.acquireLatestImage() ?: return@postDelayed
+    Handler(Looper.getMainLooper()).post({
+      val image = mImageReader!!.acquireLatestImage()
 
       val planes = image.planes
       val buffer = planes[0].buffer
@@ -317,7 +327,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
           // "base64" to b64,
         )
       )
-    }, 100)
+    })
   }
 
   private fun Bitmap.crop(x: Int, y: Int, width: Int, height: Int): Bitmap {
