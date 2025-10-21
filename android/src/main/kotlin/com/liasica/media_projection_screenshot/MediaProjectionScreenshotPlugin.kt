@@ -12,6 +12,7 @@ import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.Looper
 import androidx.annotation.RequiresApi
 import im.zego.media_projection_creator.MediaProjectionCreatorCallback
@@ -54,6 +55,9 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
   private var mImageReady = false
   private var latestBitmapMap: Map<String, Any>? = null
 
+  private var imageHandlerThread: HandlerThread? = null
+  private var imageHandler: Handler? = null
+
   companion object {
     const val LOG_TAG = "MP_SCREENSHOT"
     const val CAPTURE_SINGLE = "MP_CAPTURE_SINGLE"
@@ -71,6 +75,12 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     EventChannel(flutterPluginBinding.binaryMessenger, EVENT_CHANNEL_NAME).setStreamHandler(this)
 
     context = flutterPluginBinding.applicationContext
+
+    imageHandlerThread = HandlerThread("ImageProcessingThread").apply {
+      start()
+      imageHandler = Handler(looper)
+      Log.i(LOG_TAG, "ImageProcessingThread started for FIFO image handling.")
+    }
 
     RequestMediaProjectionPermissionManager.getInstance().setRequestPermissionCallback(mediaProjectionCreatorCallback)
   }
@@ -96,6 +106,9 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
   override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
     methodChannel.setMethodCallHandler(null)
+    imageHandlerThread?.quitSafely()
+    imageHandlerThread = null
+    imageHandler = null
   }
 
 
@@ -136,7 +149,6 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2)
       mImageReader?.setOnImageAvailableListener({ reader ->
         val image = mImageReader!!.acquireNextImage()
-        Log.i(LOG_TAG, "onImageAvailable")
         if (!mImageReady) {
           mImageReady = true
           // Avoid black screen for the first capture
@@ -172,7 +184,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
         Handler(Looper.getMainLooper()).postDelayed({
           mImageReady = false
         }, 500);
-      }, null)
+      }, imageHandler)
     }
 
     mVirtualDisplay = mediaProjection.createVirtualDisplay(
