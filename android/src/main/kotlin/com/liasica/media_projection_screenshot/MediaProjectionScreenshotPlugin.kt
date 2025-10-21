@@ -306,7 +306,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
       val bitmap = imageToBitmapRgba(image)
       val outputStream = ByteArrayOutputStream()
-      bitmap.compress(Bitmap.CompressFormat.WEBP, 85, outputStream)
+      bitmap.compress(Bitmap.CompressFormat.JPEG, 85, outputStream)
       val byteArray = outputStream.toByteArray()
 
       image.close()
