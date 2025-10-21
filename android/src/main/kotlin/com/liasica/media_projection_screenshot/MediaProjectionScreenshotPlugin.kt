@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
+import android.view.Display
 import androidx.annotation.RequiresApi
 import im.zego.media_projection_creator.MediaProjectionCreatorCallback
 import im.zego.media_projection_creator.RequestMediaProjectionPermissionManager
@@ -55,6 +56,8 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
   private var imageHandlerThread: HandlerThread? = null
   private var imageHandler: Handler? = null
+
+  var defaultRotattion = -1
 
   companion object {
     const val LOG_TAG = "MP_SCREENSHOT"
@@ -158,6 +161,27 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       null,
     )
 
+    val displayManager = context.getSystemService(Context.DISPLAY_SERVICE) as DisplayManager
+
+    defaultRotattion = displayManager.displays.first().rotation
+    // 监听旋转
+    displayManager.registerDisplayListener(object : DisplayManager.DisplayListener {
+      override fun onDisplayAdded(displayId: Int) {
+        Log.i( LOG_TAG, "Display added: $displayId")
+      }
+      override fun onDisplayRemoved(displayId: Int) {
+        Log.i( LOG_TAG, "Display removed: $displayId")
+      }
+
+      override fun onDisplayChanged(displayId: Int) {
+        val display = displayManager.getDisplay(displayId) ?: return
+        val newRotation = display.rotation
+        if (displayId == Display.DEFAULT_DISPLAY && newRotation != defaultRotattion) {
+          Log.i(LOG_TAG, "Display rotation changed: $defaultRotattion -> $newRotation, recreating VirtualDisplay")
+          defaultRotattion = newRotation
+        }
+      }
+    }, imageHandler)
 
   }
 
