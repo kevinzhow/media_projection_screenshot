@@ -293,7 +293,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     }
 
     imageHandler?.post {
-      val image = mImageReader!!.acquireNextImage()
+      val image = mImageReader!!.acquireLatestImage()
       // Avoid black screen for the first capture
 
       val planes = image.planes
