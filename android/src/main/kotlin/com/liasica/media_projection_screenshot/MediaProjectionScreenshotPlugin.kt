@@ -179,10 +179,40 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
         if (displayId == Display.DEFAULT_DISPLAY && newRotation != defaultRotattion) {
           Log.i(LOG_TAG, "Display rotation changed: $defaultRotattion -> $newRotation, recreating VirtualDisplay")
           defaultRotattion = newRotation
+
+          val metrics = getCurrentDisplayMetrics()
+
+          // 1) 先创建新的 ImageReader
+          val newReader = ImageReader.newInstance(metrics.w, metrics.h, PixelFormat.RGBA_8888, 3)
+          // 2) 切换 Surface（先 setSurface，再 resize，更平滑）
+          mVirtualDisplay?.setSurface(newReader.surface)
+          // 3) 调整 VirtualDisplay 尺寸
+          mVirtualDisplay?.resize(metrics.w, metrics.h, metrics.density)
+
+          // 4) 关闭旧 reader，替换引用，重绑回调
+          mImageReader?.setOnImageAvailableListener(null, null)
+          mImageReader?.close()
+          mImageReader = newReader
+
         }
       }
     }, imageHandler)
 
+  }
+
+  private data class Metrics(val w: Int, val h: Int, val density: Int)
+
+  private fun getCurrentDisplayMetrics(): Metrics {
+    val density = Resources.getSystem().displayMetrics.densityDpi
+
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      val wm = context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager
+      val b = wm.currentWindowMetrics.bounds
+      Metrics(b.width(), b.height(), density)
+    } else {
+      val dm = Resources.getSystem().displayMetrics
+      Metrics(dm.widthPixels, dm.heightPixels, density)
+    }
   }
 
   private fun stopCapture(result: Result) {
