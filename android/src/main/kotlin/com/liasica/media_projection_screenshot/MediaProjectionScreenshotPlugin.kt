@@ -25,6 +25,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
 import java.io.ByteArrayOutputStream
+import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.log
@@ -303,11 +304,9 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       val rowPadding = rowStride - pixelStride * mWidth
       val padding = rowPadding / pixelStride
 
-      val bitmap = Bitmap.createBitmap(mWidth + padding, mHeight, Bitmap.Config.ARGB_8888)
-      bitmap.copyPixelsFromBuffer(buffer)
+      val bitmap = imageToBitmapRgba(image)
       val outputStream = ByteArrayOutputStream()
-      bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-
+      bitmap.compress(Bitmap.CompressFormat.WEBP, 85, outputStream)
       val byteArray = outputStream.toByteArray()
 
       image.close()
@@ -344,6 +343,36 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     encodeYV12(yuv, argb, inputWidth, inputHeight)
     scaled.recycle()
     return yuv
+  }
+
+  private fun imageToBitmapRgba(image: Image): Bitmap {
+    // 仅适用于 RGBA_8888
+    val crop = image.cropRect
+    val width = crop.width()
+    val height = crop.height()
+    val plane = image.planes[0]
+    val buffer = plane.buffer
+    val pixelStride = plane.pixelStride // 通常 4
+    val rowStride = plane.rowStride
+
+    // 目标是紧凑的 ARGB_8888
+    val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val dst = ByteBuffer.allocate(width * height * pixelStride)
+
+    val rowBytes = width * pixelStride
+    val row = ByteArray(rowBytes)
+
+    // 逐行读取有效区域：从 crop.left 开始，跳过 padding
+    for (y in 0 until height) {
+      val srcPos = (y + crop.top) * rowStride + crop.left * pixelStride
+      buffer.position(srcPos)
+      buffer.get(row, 0, rowBytes)
+      dst.put(row)
+    }
+
+    dst.rewind()
+    out.copyPixelsFromBuffer(dst)
+    return out
   }
 
   private fun encodeYV12(yuv420sp: ByteArray, argb: IntArray, width: Int, height: Int) {
