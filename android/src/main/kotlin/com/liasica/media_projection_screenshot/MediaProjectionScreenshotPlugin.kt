@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.os.Build
@@ -25,6 +26,7 @@ import io.flutter.plugin.common.MethodChannel.Result
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.log
 
 
 /** MediaProjectionScreenshotPlugin */
@@ -50,6 +52,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
   private var mHeight = 0
 
   private var mImageReady = false
+  private var latestBitmapMap: Map<String, Any>? = null
 
   companion object {
     const val LOG_TAG = "MP_SCREENSHOT"
@@ -132,12 +135,43 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     if (mImageReader == null) {
       mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2)
       mImageReader?.setOnImageAvailableListener({ reader ->
+        val image = mImageReader!!.acquireNextImage()
+        Log.i(LOG_TAG, "onImageAvailable")
         if (!mImageReady) {
           mImageReady = true
           // Avoid black screen for the first capture
-          val image = mImageReader!!.acquireLatestImage()
-          image.close()
+
+          val planes = image.planes
+          val buffer = planes[0].buffer
+          val pixelStride = planes[0].pixelStride
+          val rowStride = planes[0].rowStride
+          val rowPadding = rowStride - pixelStride * mWidth
+          val padding = rowPadding / pixelStride
+
+          val bitmap = Bitmap.createBitmap(mWidth + padding, mHeight, Bitmap.Config.ARGB_8888)
+          bitmap.copyPixelsFromBuffer(buffer)
+          val outputStream = ByteArrayOutputStream()
+          bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+
+          val byteArray = outputStream.toByteArray()
+
+          latestBitmapMap = mapOf(
+            "bytes" to byteArray,
+            "width" to bitmap.width,
+            "height" to bitmap.height,
+            "rowBytes" to bitmap.rowBytes,
+            "format" to Bitmap.Config.ARGB_8888.toString(),
+            "pixelStride" to pixelStride,
+            "rowStride" to rowStride,
+            "nv21" to getYV12(bitmap.width, bitmap.height, bitmap),
+            "time" to System.currentTimeMillis(),
+          )
         }
+
+        image.close()
+        Handler(Looper.getMainLooper()).postDelayed({
+          mImageReady = false
+        }, 500);
       }, null)
     }
 
@@ -288,45 +322,18 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     }
 
     Handler(Looper.getMainLooper()).post({
-      val image = mImageReader!!.acquireLatestImage()
 
-      val planes = image.planes
-      val buffer = planes[0].buffer
-      val pixelStride = planes[0].pixelStride
-      val rowStride = planes[0].rowStride
-      val rowPadding = rowStride - pixelStride * mWidth
+      if (latestBitmapMap != null) {
+        val bitmapMap = latestBitmapMap!!.toMutableMap();
 
-      val bitmap = Bitmap.createBitmap(
-        mWidth + rowPadding / pixelStride,
-        mHeight,
-        Bitmap.Config.ARGB_8888
-      )
-      bitmap.copyPixelsFromBuffer(buffer)
+        bitmapMap["queue"] = 1
 
-      image.close()
-
-      val outputStream = ByteArrayOutputStream()
-      bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-
-      val byteArray = outputStream.toByteArray()
-      // val b64 = "data:image/png;base64," + Base64.encodeToString(byteArray, Base64.NO_WRAP)
-      // Log.i(LOG_TAG, "base64 = $b64")
-
-      result.success(
-        mapOf(
-          "bytes" to byteArray,
-          "width" to bitmap.width,
-          "height" to bitmap.height,
-          "rowBytes" to bitmap.rowBytes,
-          "format" to Bitmap.Config.ARGB_8888.toString(),
-          "pixelStride" to pixelStride,
-          "rowStride" to rowStride,
-          "nv21" to getYV12(bitmap.width, bitmap.height, bitmap),
-          "time" to System.currentTimeMillis(),
-          "queue" to 1,
-          // "base64" to b64,
+        result.success(
+          bitmapMap
         )
-      )
+      } else {
+        result.error(LOG_TAG, "Capture failed", null)
+      }
     })
   }
 
