@@ -52,9 +52,6 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
   private var mWidth = 0
   private var mHeight = 0
 
-  private var mImageReady = false
-  private var latestBitmapMap: Map<String, Any>? = null
-
   private var imageHandlerThread: HandlerThread? = null
   private var imageHandler: Handler? = null
 
@@ -147,44 +144,6 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
     if (mImageReader == null) {
       mImageReader = ImageReader.newInstance(mWidth, mHeight, PixelFormat.RGBA_8888, 2)
-      mImageReader?.setOnImageAvailableListener({ reader ->
-        val image = mImageReader!!.acquireNextImage()
-        if (!mImageReady) {
-          mImageReady = true
-          // Avoid black screen for the first capture
-
-          val planes = image.planes
-          val buffer = planes[0].buffer
-          val pixelStride = planes[0].pixelStride
-          val rowStride = planes[0].rowStride
-          val rowPadding = rowStride - pixelStride * mWidth
-          val padding = rowPadding / pixelStride
-
-          val bitmap = Bitmap.createBitmap(mWidth + padding, mHeight, Bitmap.Config.ARGB_8888)
-          bitmap.copyPixelsFromBuffer(buffer)
-          val outputStream = ByteArrayOutputStream()
-          bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-
-          val byteArray = outputStream.toByteArray()
-
-          latestBitmapMap = mapOf(
-            "bytes" to byteArray,
-            "width" to bitmap.width,
-            "height" to bitmap.height,
-            "rowBytes" to bitmap.rowBytes,
-            "format" to Bitmap.Config.ARGB_8888.toString(),
-            "pixelStride" to pixelStride,
-            "rowStride" to rowStride,
-            "nv21" to getYV12(bitmap.width, bitmap.height, bitmap),
-            "time" to System.currentTimeMillis(),
-          )
-        }
-
-        image.close()
-        Handler(Looper.getMainLooper()).postDelayed({
-          mImageReady = false
-        }, 500);
-      }, imageHandler)
     }
 
     mVirtualDisplay = mediaProjection.createVirtualDisplay(
@@ -333,20 +292,45 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       return
     }
 
-    Handler(Looper.getMainLooper()).post({
+    imageHandler?.post {
+      val image = mImageReader!!.acquireNextImage()
+      // Avoid black screen for the first capture
 
-      if (latestBitmapMap != null) {
-        val bitmapMap = latestBitmapMap!!.toMutableMap();
+      val planes = image.planes
+      val buffer = planes[0].buffer
+      val pixelStride = planes[0].pixelStride
+      val rowStride = planes[0].rowStride
+      val rowPadding = rowStride - pixelStride * mWidth
+      val padding = rowPadding / pixelStride
 
-        bitmapMap["queue"] = 1
+      val bitmap = Bitmap.createBitmap(mWidth + padding, mHeight, Bitmap.Config.ARGB_8888)
+      bitmap.copyPixelsFromBuffer(buffer)
+      val outputStream = ByteArrayOutputStream()
+      bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
 
+      val byteArray = outputStream.toByteArray()
+
+      image.close()
+
+      val finalMap = mapOf(
+        "bytes" to byteArray,
+        "width" to bitmap.width,
+        "height" to bitmap.height,
+        "rowBytes" to bitmap.rowBytes,
+        "format" to Bitmap.Config.ARGB_8888.toString(),
+        "pixelStride" to pixelStride,
+        "rowStride" to rowStride,
+        "nv21" to getYV12(bitmap.width, bitmap.height, bitmap),
+        "time" to System.currentTimeMillis(),
+        "queue" to 1
+      )
+
+      Handler(Looper.getMainLooper()).post({
         result.success(
-          bitmapMap
+          finalMap
         )
-      } else {
-        result.error(LOG_TAG, "Capture failed", null)
-      }
-    })
+      })
+    }
   }
 
   private fun Bitmap.crop(x: Int, y: Int, width: Int, height: Int): Bitmap {
