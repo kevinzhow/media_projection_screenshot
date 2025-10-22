@@ -9,7 +9,9 @@ class MediaProjectionScreenshot {
   static bool _isGranted = false;
   static bool get isGranted => _isGranted;
 
-  final _captureStream = const EventChannel('com.liasica.media_projection_screenshot/event').receiveBroadcastStream();
+  final _captureStream =
+      const EventChannel('com.liasica.media_projection_screenshot/event')
+          .receiveBroadcastStream();
 
   /// request permission
   /// return [int] errorCode
@@ -35,17 +37,21 @@ class MediaProjectionScreenshot {
   /// height: capture size height pixels [int]
   /// if x, y, width, height are booth null, capture full screen
   /// if x, y, width, height are booth not null, capture specified area
-  Future<CapturedImage?> takeCapture({int? x, int? y, int? width, int? height}) async {
+  Future<CapturedImage?> takeCapture(
+      {int? x, int? y, int? width, int? height}) async {
     await requestPermission();
     if (!isGranted) {
       return null;
     }
-    return await MediaProjectionScreenshotPlatform.instance.takeCapture(x: x, y: y, width: width, height: height);
+    return await MediaProjectionScreenshotPlatform.instance
+        .takeCapture(x: x, y: y, width: width, height: height);
   }
 
-  Future<Stream<dynamic>?> startCapture({int? x, int? y, int? width, int? height, int fps = 15}) async {
+  Future<Stream<dynamic>?> startCapture(
+      {int? x, int? y, int? width, int? height, int fps = 15}) async {
     try {
-      if (await MediaProjectionScreenshotPlatform.instance.startCapture(x: x, y: y, width: width, height: height, fps: fps)) {
+      if (await MediaProjectionScreenshotPlatform.instance
+          .startCapture(x: x, y: y, width: width, height: height, fps: fps)) {
         return _captureStream;
       }
       return null;
@@ -55,6 +61,7 @@ class MediaProjectionScreenshot {
   }
 
   Future<bool> stopCapture() async {
+    _isGranted = false;
     return await MediaProjectionScreenshotPlatform.instance.stopCapture();
   }
 }

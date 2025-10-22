@@ -231,6 +231,8 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
 
     mediaProjection?.stop()
 
+    mediaProjection = null
+
     Log.i(LOG_TAG, "Screen capture stopped")
     result.success(true)
   }
