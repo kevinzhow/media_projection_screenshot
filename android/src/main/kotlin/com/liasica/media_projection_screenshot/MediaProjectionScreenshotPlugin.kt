@@ -216,11 +216,11 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
   }
 
   private fun stopCapture(result: Result) {
-    if (!isLiving.compareAndSet(true, false)) {
-      Log.i(LOG_TAG, "Screen capture is not start")
-      result.success(true)
-      return
-    }
+//    if (!isLiving.compareAndSet(true, false)) {
+//      Log.i(LOG_TAG, "Screen capture is not start")
+//      result.success(true)
+//      return
+//    }
 
     mVirtualDisplay?.release()
     mVirtualDisplay = null
@@ -228,6 +228,8 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
     mImageReader?.surface?.release()
     mImageReader?.close()
     mImageReader = null
+
+    mediaProjection?.stop()
 
     Log.i(LOG_TAG, "Screen capture stopped")
     result.success(true)
@@ -254,7 +256,7 @@ class MediaProjectionScreenshotPlugin : FlutterPlugin, MethodCallHandler, EventC
       return
     }
 
-    if (!isLiving.compareAndSet(false, true)) {
+    if (!this.isLiving.compareAndSet(false, true)) {
       result.error(LOG_TAG, "Screen capture has started", null)
       return
     }
